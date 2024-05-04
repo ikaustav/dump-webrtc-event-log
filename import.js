@@ -72,7 +72,7 @@ Promise.all([
     document.querySelector('input').disabled = false;
 });
 
-const graph = new Highcharts.Chart({
+const options = {
     title: false,
     xAxis: {
         type: 'datetime',
@@ -106,7 +106,7 @@ const graph = new Highcharts.Chart({
     },
     chart: {
         zoomType: 'x',
-        renderTo : 'graph',
+        renderTo : 'container',
     },
     tooltip: {
         formatter: function(tooltip) {
@@ -146,8 +146,20 @@ const graph = new Highcharts.Chart({
         },
         split: true,
     },
-
-});
+};
+const searchParams = new URLSearchParams(window.location.search);
+if (searchParams.has('export')) {
+    // Different settings for webrtchacks posts optimized for small width.
+    document.getElementById('container').style.width = 627;
+    document.getElementById('container').style['min-width'] = 627;
+    document.getElementById('container').style.height = 800;
+    options.legend = {
+        itemStyle: {
+            fontSize: 9,
+        },
+    };
+}
+const graph = new Highcharts.Chart(options);
 
 let basetime;
 const bweProbeClusters = [];
