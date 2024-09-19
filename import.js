@@ -115,14 +115,21 @@ const options = {
                 return [
                     '<b>Probe cluster ' + this.point.name + '</b>',
                     'Target bitrate: ' + this.point.y + 'bps',
-                    'Sequence numbers: ' + (packetInfos ? packetInfos.map(i => i[0]).join(',') : '(not sent)'),
-                    'Sizes: ' + (packetInfos ? packetInfos.map(i => i[1]).join(',') : '(not sent)'),
+                    'Sequence numbers: ' + (packetInfos ? packetInfos.map(i => i[0]).join(',') : '---'),
+                    'Sizes: ' + (packetInfos ? packetInfos.map(i => i[1]).join(',') : '---'),
                 ].join('<br>');
-            } else if (this.series.name === 'BWE probe results') {
+            } else if (this.series.name === 'Successful BWE probes') {
                 return [
                     '<b>Probe result ' + this.point.name + '</b>',
                     'Delay: ' + this.point.delayMs + 'ms',
                     'Bandwidth estimate: ' + this.point.y + 'bps',
+                ].join('<br>');
+            } else if (this.series.name === 'BWE probe failures') {
+                return [
+                    '<b>Probe result ' + this.point.name + '</b>',
+                    'Delay: ' + this.point.delayMs + 'ms',
+                    'Target bitrate: ' + this.point.y + 'bps',
+                    'Failure reason: ' + this.point.failureReason,
                 ].join('<br>');
             } else if (this.series.name === 'Delay based updates') {
                 return [
@@ -163,7 +170,8 @@ const graph = new Highcharts.Chart(options);
 
 let basetime;
 const bweProbeClusters = [];
-const bweProbeResults = [];
+const bweProbeSuccesses = [];
+const bweProbeFailures = [];
 const bweProbeClusterToPackets = { /* probe cluster id => [[twcc id, length]]*/};
 const lossBasedUpdates = [];
 const delayBasedUpdates = [];
@@ -423,7 +431,7 @@ function decodeLegacy(event, startTimeUs, absoluteStartTimeUs) {
             break;
         case 18: // BweProbeResult
             const probeCluster = bweProbeClusters.find(c => c.name === event.probeResult.id);
-            bweProbeResults.push({
+            bweProbeSuccesses.push({
                 x: absoluteTimeMs,
                 y: event.probeResult.bitrateBps,
                 name: event.probeResult.id,
@@ -570,14 +578,23 @@ function decode(events) {
     });
     events.probeSuccess.forEach(result => {
         const probeCluster = events.probeClusters.find(c => c.id === result.id);
-        bweProbeResults.push({
+        bweProbeSuccesses.push({
             x: absoluteStartTimeMs + result.timestampMs,
             y: result.bitrateBps,
             name: result.id,
             delayMs: result.timestampMs - probeCluster.timestampMs,
         });
     });
-    // TODO: probe failures.
+    events.probeFailure.forEach(result => {
+        const probeCluster = events.probeClusters.find(c => c.id === result.id);
+        bweProbeFailures.push({
+            x: absoluteStartTimeMs + result.timestampMs,
+            y: probeCluster.bitrateBps,
+            name: result.id,
+            delayMs: result.timestampMs - probeCluster.timestampMs,
+            failureReason: ProbingFailureReasontoString(Number(result.failureReason)),
+        });
+    });
 
     // RTP handling.
     const outgoingRtpPackets = events.outgoingRtpPackets
@@ -692,9 +709,14 @@ function plot() {
             data: bweProbeClusters,
         },
         {
-            name: 'BWE probe results',
+            name: 'Successful BWE probes',
             type: 'scatter',
-            data: bweProbeResults,
+            data: bweProbeSuccesses,
+        },
+        {
+            name: 'BWE probe failures',
+            type: 'scatter',
+            data: bweProbeFailures,
         },
         {
             name: 'Loss based updates',
@@ -790,4 +812,17 @@ function savePCAP(filename) {
     a.download = filename + '.pcap';
     a.innerText = 'Download PCAP';
     document.getElementById('download').appendChild(a);
+}
+
+function ProbingFailureReasontoString(failureReasonCode) {
+    switch (failureReasonCode) {
+        case 1:
+            return "INVALID_SEND_RECEIVE_INTERVAL";
+        case 2:
+            return "INVALID_SEND_RECEIVE_RATIO";
+        case 3:
+            return "TIMEOUT";
+        default:
+            return "UNKNOWN";
+    }
 }
