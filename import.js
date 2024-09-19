@@ -438,7 +438,7 @@ function decodeLegacy(event, startTimeUs, absoluteStartTimeUs) {
     }
 }
 
-function decodeRtpDelta(what, configs) {
+function decodeRtpDelta(what) {
     const ssrc = what.ssrc;
 
     const padding = (new FixedLengthDeltaDecoder(what.paddingSizeDeltas, BigInt(what.paddingSize), what.numberOfDeltas)).decode();
@@ -584,14 +584,50 @@ function decode(events) {
         .map(decodeRtpDelta)
         .flat()
         .sort((a, b) => a.timestampMs - b.timestampMs);
-    outgoingRtpPackets.forEach(packet => packet.incoming = false);
+
+    outgoingRtpPackets.forEach(packet => {
+        // check if rtx packet
+        let matchingConfig = events.videoSendStreamConfigs.find(config => config.rtxSsrc === packet.ssrc);
+        if (matchingConfig) {
+            packet.osn = matchingConfig.ssrc;
+        } else {
+            // check if video packet
+            matchingConfig = events.videoSendStreamConfigs.find(config => config.ssrc === packet.ssrc);
+            if (!matchingConfig) {
+                // check if audio packet
+                matchingConfig = events.audioSendStreamConfigs.find(config => config.ssrc === packet.ssrc);
+            }
+        }
+
+        packet.incoming = false;
+        packet.headerExtensions = matchingConfig.headerExtensions;
+    });
+
     window.outgoingRtpPackets = outgoingRtpPackets.slice();
 
     const incomingRtpPackets = events.incomingRtpPackets
         .map(decodeRtpDelta)
         .flat()
         .sort((a, b) => a.timestampMs - b.timestampMs);
-    incomingRtpPackets.forEach(packet => packet.incoming = true);
+
+    incomingRtpPackets.forEach(packet => {
+        // check if rtx packet
+        let matchingConfig = events.videoRecvStreamConfigs.find(config => config.rtxSsrc === packet.ssrc);
+        if (matchingConfig) {
+            packet.osn = matchingConfig.ssrc;
+        } else {
+            // check if video packet
+            matchingConfig = events.videoRecvStreamConfigs.find(config => config.remoteSsrc === packet.ssrc);
+            if (!matchingConfig) {
+                // check if audio packet
+                matchingConfig = events.audioRecvStreamConfigs.find(config => config.remoteSsrc === packet.ssrc);
+            } 
+        } 
+
+        packet.incoming = true;
+        packet.headerExtensions = matchingConfig.headerExtensions;
+    });
+
     while (outgoingRtpPackets.length || incomingRtpPackets.length) {
         let packet;
         if (!outgoingRtpPackets.length) { // flush incoming packets.
@@ -603,6 +639,7 @@ function decode(events) {
         } else {
             packet = incomingRtpPackets.shift();
         }
+        // TODO: write to pcap.
         countRtp(packet.timestampMs, absoluteStartTimeMs + packet.timestampMs, packet.ssrc, packet.incoming, packet.headerSize, packet.headerSize + packet.payloadSize);
     }
     // RTCP handling.
