@@ -455,6 +455,48 @@ function decodeRtpDelta(what, configs) {
     // CSRCS list missing?
     // TODO: decode all the individual header extensions with known names.
     // console.log({padding, marker, payloadType, headerSize, sequenceNumber, rtpTimestamp, payloadSize, ssrc, config});
+
+    
+    // 1. TWCC seq num
+    let transportSequenceNumber;
+    if (what.transportSequenceNumber) {
+        transportSequenceNumber = (new FixedLengthDeltaDecoder(what.transportSequenceNumberDeltas, BigInt(what.transportSequenceNumber), what.numberOfDeltas)).decode();
+    }
+
+    // 2. transmission time offset
+    let transmissionTimeOffset;
+    if (what.transmissionTimeOffset) {
+        transmissionTimeOffset = (new FixedLengthDeltaDecoder(what.transmissionTimeOffsetDeltas, BigInt(what.transmissionTimeOffset), what.numberOfDeltas)).decode();
+    }
+
+    // 3. absolute send time
+    let absoluteSendTime;
+    if (what.absoluteSendTime) {
+        absoluteSendTime = (new FixedLengthDeltaDecoder(what.absoluteSendTimeDeltas, BigInt(what.absoluteSendTime), what.numberOfDeltas)).decode();
+    }
+
+    // 4. video rotation
+    let videoRotation;
+    if (what.videoRotation) {
+        videoRotation = (new FixedLengthDeltaDecoder(what.videoRotationDeltas, BigInt(what.videoRotation), what.numberOfDeltas)).decode();
+    }
+
+    // 5. audio level
+    let audioLevel;
+    if (what.audioLevel) {
+        audioLevel = (new FixedLengthDeltaDecoder(what.audioLevelDeltas, BigInt(what.audioLevel), what.numberOfDeltas)).decode();
+    }
+
+    // 6. voice activity
+    let voiceActivity;
+    if (what.voiceActivity) {
+        voiceActivity = (new FixedLengthDeltaDecoder(what.voiceActivityDeltas, what.voiceActivity ? 1n : 0n, what.numberOfDeltas)).decode();
+    }
+
+    // 7. dependency descriptor
+    // TODO: decode dependency descriptor
+
+    // TODO: kagh total_packets = what.numberOfDeltas + 1 ?
     const packets = new Array(timestampMs.length);
     for (let i = 0; i < timestampMs.length; i++) {
         packets[i] = {
@@ -468,6 +510,12 @@ function decodeRtpDelta(what, configs) {
             marker: marker[i] !== 0n,
             padding: padding[i] !== 0n,
             extension: headerSize[i] !== 12n, // TODO: this is not correct when CSRC is present...
+            twccSeqNum: typeof transportSequenceNumber !== 'undefined' ? Number(transportSequenceNumber[i]) : undefined,
+            transmissionTimeOffset: typeof transmissionTimeOffset !== 'undefined' ? Number(transmissionTimeOffset[i]) : undefined,
+            absoluteSendTime: typeof absoluteSendTime !== 'undefined' ? Number(absoluteSendTime[i]) : undefined,
+            videoRotation: typeof videoRotation !== 'undefined' ? Number(videoRotation[i]) : undefined,
+            audioLevel: typeof audioLevel !== 'undefined' ? Number(audioLevel[i]) : undefined,
+            voiceActivity: typeof voiceActivity !== 'undefined' ? voiceActivity[i] !== 0n : undefined,
         };
     }
     return packets;
